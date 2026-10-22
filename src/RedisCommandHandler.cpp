@@ -133,7 +133,12 @@ RedisCommandHandler::RedisCommandHandler() {}
 
 std::string RedisCommandHandler::processCommand(const std::string& commandLine) {
     // Use RESP parser
-    auto tokens = parseRespCommand(commandLine);
+    std::vector<std::string> tokens;
+try {
+    tokens = parseRespCommand(commandLine);
+} catch (const std::exception&) {
+    return "-Error: Bad command format\r\n";
+}
     if (tokens.empty()) return "-Error: Empty command\r\n";
 
     std::string cmd = tokens[0];
