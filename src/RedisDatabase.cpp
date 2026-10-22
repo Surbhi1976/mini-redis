@@ -13,6 +13,7 @@ void RedisDatabase::flushAll() {
     //  remove every key
     std::lock_guard<std::mutex> lock(db_mutex);
     kv_store.clear();
+    expiry_map.clear();
 }
 
 void RedisDatabase::set(const std::string& key, const std::string& value) {
@@ -56,14 +57,22 @@ std::string RedisDatabase::type(const std::string& key) {
     }
     return "none";
 }
-
 bool RedisDatabase::expire(const std::string& key, int seconds) {
-    //   make the key disappear after `seconds`; return false if the key does not exist
     std::lock_guard<std::mutex> lock(db_mutex);
-    auto it = kv_store.find(key);
-    if (it != kv_store.end()) {
-        // For now, we'll just remove the key
-        kv_store.erase(it);
+    if (kv_store.find(key) == kv_store.end()) return false;   // no such key
+    expiry_map[key] = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+    return true;
+}
+
+bool RedisDatabase::isExpired(const std::string& key) {
+    auto it = expiry_map.find(key);
+    if (it == expiry_map.end()) return false;               // this key has no timer
+
+    if (std::chrono::steady_clock::now() >= it->second) {   // its time has passed
+        // TODO: erase `key` from kv_store
+        kv_store.erase(key);
+        // TODO: erase `key` from expiry_map
+        expiry_map.erase(key);
         return true;
     }
     return false;
