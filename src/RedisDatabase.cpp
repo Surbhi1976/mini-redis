@@ -20,11 +20,13 @@ void RedisDatabase::set(const std::string& key, const std::string& value) {
     //  store the value under the key (overwrite if it already exists)
     std::lock_guard<std::mutex> lock(db_mutex);
     kv_store[key] = value;
+    expiry_map.erase(key);
 }
 
 bool RedisDatabase::get(const std::string& key, std::string& value) {
     // if the key exists, put its value in `value` and return true; otherwise return false
     std::lock_guard<std::mutex> lock(db_mutex);
+    if (isExpired(key)) return false; 
     auto it = kv_store.find(key);
     if (it != kv_store.end()) {
         value = it->second;
@@ -36,15 +38,18 @@ bool RedisDatabase::get(const std::string& key, std::string& value) {
 bool RedisDatabase::del(const std::string& key) {
     //  remove the key; return true if it existed, false otherwise
     std::lock_guard<std::mutex> lock(db_mutex);
+    if (isExpired(key)) return false;
+    expiry_map.erase(key);  
     return kv_store.erase(key) > 0;
 }
-
 std::vector<std::string> RedisDatabase::keys() {
-    //  return a vector with every key
     std::lock_guard<std::mutex> lock(db_mutex);
-    std::vector<std::string> result;
+    std::vector<std::string> all, result;
     for (const auto& pair : kv_store) {
-        result.push_back(pair.first);
+        all.push_back(pair.first);
+    }
+    for (const auto& k : all) {
+        if (!isExpired(k)) result.push_back(k);
     }
     return result;
 }
@@ -52,6 +57,7 @@ std::vector<std::string> RedisDatabase::keys() {
 std::string RedisDatabase::type(const std::string& key) {
     // return "string" if the key exists, otherwise "none"
     std::lock_guard<std::mutex> lock(db_mutex);
+    if (isExpired(key)) return "none";
     if (kv_store.find(key) != kv_store.end()) {
         return "string";
     }
